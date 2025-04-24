@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Task Manager</title>
+    <script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            background-color: #f4f4f4;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        button {
+            padding: 10px 20px;
+            margin: 10px;
+            cursor: pointer;
+            background-color: #00bcd4;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            transition: background-color 0.3s ease, transform 0.2s ease;
+        }
+        button:hover {
+            background-color: #0097a7;
+            transform: scale(1.1);
+        }
+        .task-list {
+            margin-top: 20px;
+            width: 100%;
+            max-width: 600px;
+        }
+        .task-item {
+            background-color: #fff;
+            margin: 10px 0;
+            padding: 10px;
+            border: 1px solid #ddd;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            position: relative;
+            overflow: hidden;
+            transition: transform 0.5s ease, background-color 1s ease;
+        }
+        .task-name {
+            font-weight: bold;
+            z-index: 2;
+        }
+        .task-description {
+            color: darkgray;
+            z-index: 2;
+            display: inline-block;
+            margin-right: 10px;
+        }
+        .task-item.checked {
+            background-color: #90ee90;
+            animation: fillGreen 1s forwards;
+        }
+        .task-item .checkbox-container {
+            position: relative;
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            background-color: #ddd;
+            border-radius: 5px;
+            cursor: pointer;
+            z-index: 2;
+            margin-top: 5px;
+        }
+        .task-item .checkbox-container input {
+            opacity: 0;
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            z-index: 2;
+        }
+        .task-item .checkbox-container input:checked + .checkbox-label {
+            background-color: #2e7d32;
+        }
+        .checkbox-label {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: #00bcd4;
+            transition: background-color 0.3s ease;
+        }
+        #addTaskPopup, #editTaskPopup, #editDescriptionPopup, #changeNamePopup {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            z-index: 2;
+        }
+        .hidden {
+            display: none;
+        }
+        .popup-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            z-index: 1;
+        }
+        .popup-content {
+            z-index: 2;
+        }
+        @keyframes fillGreen {
+            0% {
+                background-color: #fff;
+            }
+            100% {
+                background-color: #90ee90;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Task Manager</h1>
+
+    <div>
+        <button onclick="openAddTaskPopup()">Add Task</button>
+        <button onclick="saveTasks()">Save</button>
+        <button onclick="openTasksFile()">Open</button>
+    </div>
+
+    <div class="task-list" id="taskList"></div>
+
+    <div id="addTaskPopup" class="popup-content">
+        <h2>Add New Task</h2>
+        <input type="text" id="taskNameInput" placeholder="Task Name" required><br><br>
+        <textarea id="taskDescriptionInput" placeholder="Task Description (optional)"></textarea><br><br>
+        <button onclick="saveTask()">Save</button>
+        <button onclick="closePopup('addTaskPopup')">Cancel</button>
+    </div>
+
+    <div id="editTaskPopup" class="popup-content">
+        <h2>Edit Task</h2>
+        <button onclick="openEditDescription()">Add/Change Description</button>
+        <button onclick="changeTaskName()">Change Task Name</button>
+        <button onclick="deleteTask()">Delete Task</button>
+        <button onclick="closePopup('editTaskPopup')">Cancel</button>
+    </div>
+
+    <div id="editDescriptionPopup" class="popup-content">
+        <h2>Edit Task Description</h2>
+        <textarea id="newDescriptionInput" placeholder="Enter new description"></textarea><br><br>
+        <button onclick="changeDescription()">Save Description</button>
+        <button onclick="closePopup('editDescriptionPopup')">Cancel</button>
+    </div>
+
+    <div id="changeNamePopup" class="popup-content">
+        <h2>Change Task Name</h2>
+        <input type="text" id="newTaskNameInput" placeholder="Enter new task name"><br><br>
+        <button onclick="saveNewTaskName()">Save Name</button>
+        <button onclick="closePopup('changeNamePopup')">Cancel</button>
+    </div>
+
+    <div class="popup-overlay hidden" id="popupOverlay" onclick="closeAllPopups()"></div>
+
+    <input type="file" id="fileInput" style="display: none;" onchange="openFile(event)">
+
+    <script>
+        let tasks = [];
+        let editingTaskIndex = -1;
+
+        function openAddTaskPopup() {
+            document.getElementById('addTaskPopup').style.display = 'block';
+            document.getElementById('popupOverlay').classList.remove('hidden');
+        }
+
+        function closePopup(popupId) {
+            document.getElementById(popupId).style.display = 'none';
+            document.getElementById('popupOverlay').classList.add('hidden');
+        }
+
+        function closeAllPopups() {
+            closePopup('addTaskPopup');
+            closePopup('editTaskPopup');
+            closePopup('editDescriptionPopup');
+            closePopup('changeNamePopup');
+        }
+
+        function saveTask() {
+            const taskName = document.getElementById('taskNameInput').value;
+            const taskDescription = document.getElementById('taskDescriptionInput').value;
+
+            if (taskName) {
+                const task = { name: taskName, description: taskDescription, completed: false };
+                tasks.push(task);
+                displayTasks();
+                closePopup('addTaskPopup');
+            } else {
+                alert("Please fill in the task name.");
+            }
+        }
+
+        function displayTasks() {
+            const taskListElement = document.getElementById('taskList');
+            taskListElement.innerHTML = '';
+
+            tasks.forEach((task, index) => {
+                const taskItem = document.createElement('div');
+                taskItem.classList.add('task-item');
+                if (task.completed) taskItem.classList.add('checked');
+
+                taskItem.innerHTML = `
+                    <div>
+                        <span class="task-name">${task.completed ? '√ ' : ''}${task.name}</span>
+                        <span class="task-description">${task.description || 'No description'}</span>
+                    </div>
+                    <div>
+                        <label class="checkbox-container">
+                            <input type="checkbox" onclick="toggleTaskCompletion(${index})" ${task.completed ? 'checked' : ''}>
+                            <span class="checkbox-label"></span>
+                        </label>
+                        <button onclick="openEditPopup(${index})">Edit</button>
+                    </div>
+                `;
+                taskListElement.appendChild(taskItem);
+            });
+        }
+
+        function toggleTaskCompletion(index) {
+            const taskItem = document.querySelectorAll('.task-item')[index];
+            const task = tasks[index];
+
+            task.completed = !task.completed;
+            taskItem.querySelector('.task-name').textContent = `${task.completed ? '√ ' : ''}${task.name}`;
+
+            taskItem.classList.toggle('checked');
+        }
+
+        function openEditPopup(index) {
+            editingTaskIndex = index;
+            document.getElementById('editTaskPopup').style.display = 'block';
+            document.getElementById('popupOverlay').classList.remove('hidden');
+        }
+
+        function openEditDescription() {
+            document.getElementById('editDescriptionPopup').style.display = 'block';
+            document.getElementById('popupOverlay').classList.remove('hidden');
+        }
+
+        function changeDescription() {
+            const newDescription = document.getElementById('newDescriptionInput').value;
+            tasks[editingTaskIndex].description = newDescription;
+            displayTasks();
+            closePopup('editDescriptionPopup');
+        }
+
+        function changeTaskName() {
+            document.getElementById('changeNamePopup').style.display = 'block';
+            document.getElementById('popupOverlay').classList.remove('hidden');
+        }
+
+        function saveNewTaskName() {
+            const newTaskName = document.getElementById('newTaskNameInput').value;
+            tasks[editingTaskIndex].name = newTaskName;
+            displayTasks();
+            closePopup('changeNamePopup');
+        }
+
+        function deleteTask() {
+            tasks.splice(editingTaskIndex, 1);
+            displayTasks();
+            closePopup('editTaskPopup');
+        }
+
+        function saveTasks() {
+            const taskData = JSON.stringify(tasks, null, 2);
+            const blob = new Blob([taskData], { type: 'application/json' });
+            saveAs(blob, `TaskManager_${new Date().toISOString().split('T')[0]}.taskmanagerbynoah`);
+        }
+
+        function openTasksFile() {
+            document.getElementById('fileInput').click();
+        }
+
+        function openFile(event) {
+            const file = event.target.files[0];
+            const reader = new FileReader();
+
+            reader.onload = function(e) {
+                try {
+                    const fileContent = e.target.result;
+                    tasks = JSON.parse(fileContent);
+                    displayTasks();
+                } catch (error) {
+                    alert('Error reading file.');
+                }
+            };
+
+            reader.readAsText(file);
+        }
+    </script>
+
+</body>
+</html>
