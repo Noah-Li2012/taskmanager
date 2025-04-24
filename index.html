@@ -5,7 +5,23 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Task Manager</title>
     <script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.14.0/Sortable.min.js"></script>
     <style>
+        body.dark-mode {
+            background-color: #121212;
+            color: white;
+        }
+        .dark-mode button {
+            background-color: #444;
+            color: white;
+        }
+        .dark-mode .task-item {
+            background-color: #333;
+            border-color: #555;
+        }
+        .dark-mode .task-name, .dark-mode .task-description {
+            color: white;
+        }
         body {
             font-family: Arial, sans-serif;
             padding: 20px;
@@ -36,58 +52,35 @@
         .task-item {
             background-color: #fff;
             margin: 10px 0;
-            padding: 10px;
-            border: 1px solid #ddd;
+            padding: 15px;
+            border: 3px solid #ddd;
+            border-radius: 15px;
             display: flex;
             justify-content: space-between;
-            align-items: flex-start;
+            align-items: center;
             position: relative;
             overflow: hidden;
-            transition: transform 0.5s ease, background-color 1s ease;
+            transition: transform 0.5s ease;
         }
         .task-name {
             font-weight: bold;
-            z-index: 2;
+            flex: 1;
         }
         .task-description {
             color: darkgray;
-            z-index: 2;
-            display: inline-block;
+            flex: 2;
             margin-right: 10px;
         }
         .task-item.checked {
-            background-color: #90ee90;
             animation: fillGreen 1s forwards;
         }
-        .task-item .checkbox-container {
-            position: relative;
-            display: inline-block;
-            width: 20px;
-            height: 20px;
-            background-color: #ddd;
-            border-radius: 5px;
-            cursor: pointer;
-            z-index: 2;
-            margin-top: 5px;
-        }
-        .task-item .checkbox-container input {
-            opacity: 0;
-            position: absolute;
-            width: 100%;
-            height: 100%;
-            z-index: 2;
-        }
-        .task-item .checkbox-container input:checked + .checkbox-label {
-            background-color: #2e7d32;
-        }
-        .checkbox-label {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background-color: #00bcd4;
-            transition: background-color 0.3s ease;
+        @keyframes fillGreen {
+            0% {
+                background-color: #fff;
+            }
+            100% {
+                background-color: #91F893;
+            }
         }
         #addTaskPopup, #editTaskPopup, #editDescriptionPopup, #changeNamePopup {
             display: none;
@@ -116,13 +109,20 @@
         .popup-content {
             z-index: 2;
         }
-        @keyframes fillGreen {
-            0% {
-                background-color: #fff;
-            }
-            100% {
-                background-color: #90ee90;
-            }
+        #searchBar {
+            width: 100%;
+            max-width: 300px;
+            padding: 10px;
+            border-radius: 30px;
+            border: 2px solid #00bcd4;
+            margin-top: 20px;
+            font-size: 16px;
+            outline: none;
+            transition: width 0.3s ease, background-color 0.3s ease;
+        }
+
+        #searchBar:focus {
+            background-color: #e0f7fa;
         }
     </style>
 </head>
@@ -134,6 +134,11 @@
         <button onclick="openAddTaskPopup()">Add Task</button>
         <button onclick="saveTasks()">Save</button>
         <button onclick="openTasksFile()">Open</button>
+        <button onclick="toggleDarkMode()">Toggle Dark Mode</button>
+    </div>
+
+    <div>
+        <input type="text" id="searchBar" placeholder="Search tasks" oninput="filterTasks()">
     </div>
 
     <div class="task-list" id="taskList"></div>
@@ -142,6 +147,7 @@
         <h2>Add New Task</h2>
         <input type="text" id="taskNameInput" placeholder="Task Name" required><br><br>
         <textarea id="taskDescriptionInput" placeholder="Task Description (optional)"></textarea><br><br>
+        <input type="color" id="taskBorderColorInput" value="#00bcd4"><br><br>
         <button onclick="saveTask()">Save</button>
         <button onclick="closePopup('addTaskPopup')">Cancel</button>
     </div>
@@ -176,6 +182,19 @@
         let tasks = [];
         let editingTaskIndex = -1;
 
+        new Sortable(document.getElementById('taskList'), {
+            animation: 150,
+            onEnd: function(evt) {
+                const movedTask = tasks.splice(evt.oldIndex, 1)[0];
+                tasks.splice(evt.newIndex, 0, movedTask);
+                displayTasks();
+            }
+        });
+
+        function toggleDarkMode() {
+            document.body.classList.toggle('dark-mode');
+        }
+
         function openAddTaskPopup() {
             document.getElementById('addTaskPopup').style.display = 'block';
             document.getElementById('popupOverlay').classList.remove('hidden');
@@ -194,56 +213,48 @@
         }
 
         function saveTask() {
-            const taskName = document.getElementById('taskNameInput').value;
-            const taskDescription = document.getElementById('taskDescriptionInput').value;
-
-            if (taskName) {
-                const task = { name: taskName, description: taskDescription, completed: false };
-                tasks.push(task);
-                displayTasks();
-                closePopup('addTaskPopup');
-            } else {
-                alert("Please fill in the task name.");
-            }
+            const name = document.getElementById('taskNameInput').value;
+            const description = document.getElementById('taskDescriptionInput').value;
+            const borderColor = document.getElementById('taskBorderColorInput').value;
+            const task = {
+                name,
+                description,
+                createdAt: new Date().toLocaleDateString(),
+                checked: false,
+                borderColor
+            };
+            tasks.push(task);
+            displayTasks();
+            closePopup('addTaskPopup');
         }
 
         function displayTasks() {
-            const taskListElement = document.getElementById('taskList');
-            taskListElement.innerHTML = '';
-
+            const taskList = document.getElementById('taskList');
+            taskList.innerHTML = '';
             tasks.forEach((task, index) => {
                 const taskItem = document.createElement('div');
-                taskItem.classList.add('task-item');
-                if (task.completed) taskItem.classList.add('checked');
-
+                taskItem.className = 'task-item';
+                taskItem.style.borderColor = task.borderColor;
                 taskItem.innerHTML = `
-                    <div>
-                        <span class="task-name">${task.completed ? '√ ' : ''}${task.name}</span>
-                        <span class="task-description">${task.description || 'No description'}</span>
-                    </div>
-                    <div>
-                        <label class="checkbox-container">
-                            <input type="checkbox" onclick="toggleTaskCompletion(${index})" ${task.completed ? 'checked' : ''}>
-                            <span class="checkbox-label"></span>
-                        </label>
-                        <button onclick="openEditPopup(${index})">Edit</button>
-                    </div>
+                    <input type="checkbox" ${task.checked ? 'checked' : ''} onclick="toggleTaskCheck(${index})">
+                    <span class="task-name">${task.name}</span>
+                    <span class="task-description">${task.description}</span>
+                    <span class="task-created">${task.createdAt}</span>
+                    <button onclick="openEditTaskPopup(${index})">Edit</button>
                 `;
-                taskListElement.appendChild(taskItem);
+                if (task.checked) {
+                    taskItem.classList.add('checked');
+                }
+                taskList.appendChild(taskItem);
             });
         }
 
-        function toggleTaskCompletion(index) {
-            const taskItem = document.querySelectorAll('.task-item')[index];
-            const task = tasks[index];
-
-            task.completed = !task.completed;
-            taskItem.querySelector('.task-name').textContent = `${task.completed ? '√ ' : ''}${task.name}`;
-
-            taskItem.classList.toggle('checked');
+        function toggleTaskCheck(index) {
+            tasks[index].checked = !tasks[index].checked;
+            displayTasks();
         }
 
-        function openEditPopup(index) {
+        function openEditTaskPopup(index) {
             editingTaskIndex = index;
             document.getElementById('editTaskPopup').style.display = 'block';
             document.getElementById('popupOverlay').classList.remove('hidden');
@@ -254,6 +265,26 @@
             document.getElementById('popupOverlay').classList.remove('hidden');
         }
 
+        function changeTaskName() {
+            document.getElementById('changeNamePopup').style.display = 'block';
+            document.getElementById('popupOverlay').classList.remove('hidden');
+        }
+
+        function deleteTask() {
+            tasks.splice(editingTaskIndex, 1);
+            displayTasks();
+            closeAllPopups();
+        }
+
+        function saveNewTaskName() {
+            const newTaskName = document.getElementById('newTaskNameInput').value;
+            if (newTaskName) {
+                tasks[editingTaskIndex].name = newTaskName;
+                displayTasks();
+                closePopup('changeNamePopup');
+            }
+        }
+
         function changeDescription() {
             const newDescription = document.getElementById('newDescriptionInput').value;
             tasks[editingTaskIndex].description = newDescription;
@@ -261,28 +292,9 @@
             closePopup('editDescriptionPopup');
         }
 
-        function changeTaskName() {
-            document.getElementById('changeNamePopup').style.display = 'block';
-            document.getElementById('popupOverlay').classList.remove('hidden');
-        }
-
-        function saveNewTaskName() {
-            const newTaskName = document.getElementById('newTaskNameInput').value;
-            tasks[editingTaskIndex].name = newTaskName;
-            displayTasks();
-            closePopup('changeNamePopup');
-        }
-
-        function deleteTask() {
-            tasks.splice(editingTaskIndex, 1);
-            displayTasks();
-            closePopup('editTaskPopup');
-        }
-
         function saveTasks() {
-            const taskData = JSON.stringify(tasks, null, 2);
-            const blob = new Blob([taskData], { type: 'application/json' });
-            saveAs(blob, `TaskManager_${new Date().toISOString().split('T')[0]}.taskmanagerbynoah`);
+            const blob = new Blob([JSON.stringify(tasks)], { type: 'application/json' });
+            saveAs(blob, `Tasks_${new Date().toISOString().split('T')[0].replace(/-/g, "_")}_${new Date().toLocaleTimeString().replace(/:/g, "_")}.tskmngrbynoah`);
         }
 
         function openTasksFile() {
@@ -292,20 +304,18 @@
         function openFile(event) {
             const file = event.target.files[0];
             const reader = new FileReader();
-
-            reader.onload = function(e) {
-                try {
-                    const fileContent = e.target.result;
-                    tasks = JSON.parse(fileContent);
-                    displayTasks();
-                } catch (error) {
-                    alert('Error reading file.');
-                }
+            reader.onload = function() {
+                tasks = JSON.parse(reader.result);
+                displayTasks();
             };
-
             reader.readAsText(file);
         }
-    </script>
 
+        function filterTasks() {
+            const searchQuery = document.getElementById('searchBar').value.toLowerCase();
+            const filteredTasks = tasks.filter(task => task.name.toLowerCase().includes(searchQuery));
+            displayTasks(filteredTasks);
+        }
+    </script>
 </body>
 </html>
