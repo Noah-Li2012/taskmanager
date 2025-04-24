@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Task Manager汉化</title>
+    <script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.14.0/Sortable.min.js"></script>
+    <style>
+        body.dark-mode {
+            background-color: #121212;
+            color: white;
+        }
+        .dark-mode button {
+            background-color: #444;
+            color: white;
+        }
+        .dark-mode .task-item {
+            background-color: #333;
+            border-color: #555;
+        }
+        .dark-mode .task-name, .dark-mode .task-description {
+            color: white;
+        }
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            background-color: #f4f4f4;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        button {
+            padding: 10px 20px;
+            margin: 10px;
+            cursor: pointer;
+            background-color: #00bcd4;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            transition: background-color 0.3s ease, transform 0.2s ease;
+        }
+        button:hover {
+            background-color: #0097a7;
+            transform: scale(1.1);
+        }
+        .task-list {
+            margin-top: 20px;
+            width: 100%;
+            max-width: 600px;
+        }
+        .task-item {
+            background-color: #fff;
+            margin: 10px 0;
+            padding: 15px;
+            border: 3px solid #ddd;
+            border-radius: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: relative;
+            overflow: hidden;
+            transition: transform 0.5s ease;
+        }
+        .task-name {
+            font-weight: bold;
+            flex: 1;
+        }
+        .task-description {
+            color: darkgray;
+            flex: 2;
+            margin-right: 10px;
+        }
+        .task-item.checked {
+            animation: fillGreen 1s forwards;
+        }
+        @keyframes fillGreen {
+            0% {
+                background-color: #fff;
+            }
+            100% {
+                background-color: #91F893;
+            }
+        }
+        #addTaskPopup, #editTaskPopup, #editDescriptionPopup, #changeNamePopup {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            z-index: 2;
+        }
+        .hidden {
+            display: none;
+        }
+        .popup-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            z-index: 1;
+        }
+        .popup-content {
+            z-index: 2;
+        }
+        #searchBar {
+            width: 100%;
+            max-width: 300px;
+            padding: 10px;
+            border-radius: 30px;
+            border: 2px solid #00bcd4;
+            margin-top: 20px;
+            font-size: 16px;
+            outline: none;
+            transition: width 0.3s ease, background-color 0.3s ease;
+        }
+
+        #searchBar:focus {
+            background-color: #e0f7fa;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>任务管理器</h1>
+
+    <div>
+        <button onclick="openAddTaskPopup()">添加任务</button>
+        <button onclick="saveTasks()">保存</button>
+        <button onclick="openTasksFile()">打开</button>
+        <button onclick="toggleDarkMode()">主题切换</button>
+    </div>
+
+    <div>
+        <input type="text" id="searchBar" placeholder="搜索任务" oninput="filterTasks()">
+    </div>
+
+    <div class="task-list" id="taskList"></div>
+
+    <div id="addTaskPopup" class="popup-content">
+        <h2>添加新任务</h2>
+        <input type="text" id="taskNameInput" placeholder="任务名称" required><br><br>
+        <textarea id="taskDescriptionInput" placeholder="任务注释(选填)"></textarea><br><br>
+        <input type="color" id="taskBorderColorInput" value="#00bcd4"><br><br>
+        <button onclick="saveTask()">保存</button>
+        <button onclick="closePopup('addTaskPopup')">取消</button>
+    </div>
+
+    <div id="editTaskPopup" class="popup-content">
+        <h2>编辑任务</h2>
+        <button onclick="openEditDescription()">添加/更换注释</button>
+        <button onclick="changeTaskName()">更改任务名称</button>
+        <button onclick="deleteTask()">删除任务</button>
+        <button onclick="closePopup('editTaskPopup')">取消</button>
+    </div>
+
+    <div id="editDescriptionPopup" class="popup-content">
+        <h2>Edit Task Description</h2>
+        <textarea id="newDescriptionInput" placeholder="输入新任务注释"></textarea><br><br>
+        <button onclick="changeDescription()">保存注释</button>
+        <button onclick="closePopup('editDescriptionPopup')">取消</button>
+    </div>
+
+    <div id="changeNamePopup" class="popup-content">
+        <h2>Change Task Name</h2>
+        <input type="text" id="newTaskNameInput" placeholder="输入新任务名称"><br><br>
+        <button onclick="saveNewTaskName()">保存名字</button>
+        <button onclick="closePopup('changeNamePopup')">取消</button>
+    </div>
+
+    <div class="popup-overlay hidden" id="popupOverlay" onclick="closeAllPopups()"></div>
+
+    <input type="file" id="fileInput" style="display: none;" onchange="openFile(event)">
+
+    <script>
+        let tasks = [];
+        let editingTaskIndex = -1;
+
+        new Sortable(document.getElementById('taskList'), {
+            animation: 150,
+            onEnd: function(evt) {
+                const movedTask = tasks.splice(evt.oldIndex, 1)[0];
+                tasks.splice(evt.newIndex, 0, movedTask);
+                displayTasks();
+            }
+        });
+
+        function toggleDarkMode() {
+            document.body.classList.toggle('dark-mode');
+        }
+
+        function openAddTaskPopup() {
+            document.getElementById('addTaskPopup').style.display = 'block';
+            document.getElementById('popupOverlay').classList.remove('hidden');
+        }
+
+        function closePopup(popupId) {
+            document.getElementById(popupId).style.display = 'none';
+            document.getElementById('popupOverlay').classList.add('hidden');
+        }
+
+        function closeAllPopups() {
+            closePopup('addTaskPopup');
+            closePopup('editTaskPopup');
+            closePopup('editDescriptionPopup');
+            closePopup('changeNamePopup');
+        }
+
+        function saveTask() {
+            const name = document.getElementById('taskNameInput').value;
+            const description = document.getElementById('taskDescriptionInput').value;
+            const borderColor = document.getElementById('taskBorderColorInput').value;
+            const task = {
+                name,
+                description,
+                createdAt: new Date().toLocaleDateString(),
+                checked: false,
+                borderColor
+            };
+            tasks.push(task);
+            displayTasks();
+            closePopup('addTaskPopup');
+        }
+
+        function displayTasks() {
+            const taskList = document.getElementById('taskList');
+            taskList.innerHTML = '';
+            tasks.forEach((task, index) => {
+                const taskItem = document.createElement('div');
+                taskItem.className = 'task-item';
+                taskItem.style.borderColor = task.borderColor;
+                taskItem.innerHTML = `
+                    <input type="checkbox" ${task.checked ? 'checked' : ''} onclick="toggleTaskCheck(${index})">
+                    <span class="task-name">${task.name}</span>
+                    <span class="task-description">${task.description}</span>
+                    <span class="task-created">${task.createdAt}</span>
+                    <button onclick="openEditTaskPopup(${index})">Edit</button>
+                `;
+                if (task.checked) {
+                    taskItem.classList.add('checked');
+                }
+                taskList.appendChild(taskItem);
+            });
+        }
+
+        function toggleTaskCheck(index) {
+            tasks[index].checked = !tasks[index].checked;
+            displayTasks();
+        }
+
+        function openEditTaskPopup(index) {
+            editingTaskIndex = index;
+            document.getElementById('editTaskPopup').style.display = 'block';
+            document.getElementById('popupOverlay').classList.remove('hidden');
+        }
+
+        function openEditDescription() {
+            document.getElementById('editDescriptionPopup').style.display = 'block';
+            document.getElementById('popupOverlay').classList.remove('hidden');
+        }
+
+        function changeTaskName() {
+            document.getElementById('changeNamePopup').style.display = 'block';
+            document.getElementById('popupOverlay').classList.remove('hidden');
+        }
+
+        function deleteTask() {
+            tasks.splice(editingTaskIndex, 1);
+            displayTasks();
+            closeAllPopups();
+        }
+
+        function saveNewTaskName() {
+            const newTaskName = document.getElementById('newTaskNameInput').value;
+            if (newTaskName) {
+                tasks[editingTaskIndex].name = newTaskName;
+                displayTasks();
+                closePopup('changeNamePopup');
+            }
+        }
+
+        function changeDescription() {
+            const newDescription = document.getElementById('newDescriptionInput').value;
+            tasks[editingTaskIndex].description = newDescription;
+            displayTasks();
+            closePopup('editDescriptionPopup');
+        }
+
+        function saveTasks() {
+            const blob = new Blob([JSON.stringify(tasks)], { type: 'application/json' });
+            saveAs(blob, `Tasks_${new Date().toISOString().split('T')[0].replace(/-/g, "_")}_${new Date().toLocaleTimeString().replace(/:/g, "_")}.tskmngrbynoah`);
+        }
+
+        function openTasksFile() {
+            document.getElementById('fileInput').click();
+        }
+
+        function openFile(event) {
+            const file = event.target.files[0];
+            const reader = new FileReader();
+            reader.onload = function() {
+                tasks = JSON.parse(reader.result);
+                displayTasks();
+            };
+            reader.readAsText(file);
+        }
+
+        function filterTasks() {
+            const searchQuery = document.getElementById('searchBar').value.toLowerCase();
+            const filteredTasks = tasks.filter(task => task.name.toLowerCase().includes(searchQuery));
+            displayTasks(filteredTasks);
+        }
+    </script>
+</body>
+</html>
